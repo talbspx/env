@@ -97,12 +97,18 @@ type ParserFunc func(v string) (interface{}, error)
 // Parse parses a struct containing `env` tags and loads its values from
 // environment variables.
 func Parse(v interface{}) error {
-	return ParseWithFuncs(v, map[reflect.Type]ParserFunc{})
+	return ParseWithPrefix(v, "")
+}
+
+// ParseWithPrefix parses a struct containing `env` tags and loads its values from
+// environment variables. an optional prefix to all env variables can be added
+func ParseWithPrefix(v interface{}, prefix string) error {
+	return ParseWithFuncs(v, map[reflect.Type]ParserFunc{}, prefix)
 }
 
 // ParseWithFuncs is the same as `Parse` except it also allows the user to pass
 // in custom parsers.
-func ParseWithFuncs(v interface{}, funcMap map[reflect.Type]ParserFunc) error {
+func ParseWithFuncs(v interface{}, funcMap map[reflect.Type]ParserFunc, prefix string) error {
 	ptrRef := reflect.ValueOf(v)
 	if ptrRef.Kind() != reflect.Ptr {
 		return ErrNotAStructPtr
@@ -115,10 +121,10 @@ func ParseWithFuncs(v interface{}, funcMap map[reflect.Type]ParserFunc) error {
 	for k, v := range funcMap {
 		parsers[k] = v
 	}
-	return doParse(ref, parsers)
+	return doParse(ref, parsers, prefix)
 }
 
-func doParse(ref reflect.Value, funcMap map[reflect.Type]ParserFunc) error {
+func doParse(ref reflect.Value, funcMap map[reflect.Type]ParserFunc, prefix string) error {
 	var refType = ref.Type()
 
 	for i := 0; i < refType.NumField(); i++ {
@@ -127,27 +133,33 @@ func doParse(ref reflect.Value, funcMap map[reflect.Type]ParserFunc) error {
 			continue
 		}
 		if reflect.Ptr == refField.Kind() && !refField.IsNil() {
-			err := ParseWithFuncs(refField.Interface(), funcMap)
+			err := ParseWithFuncs(refField.Interface(), funcMap, prefix)
 			if err != nil {
 				return err
 			}
 			continue
 		}
 		if reflect.Struct == refField.Kind() && refField.CanAddr() && refField.Type().Name() == "" {
-			err := Parse(refField.Addr().Interface())
+			err := ParseWithPrefix(refField.Addr().Interface(), prefix)
 			if err != nil {
 				return err
 			}
 			continue
 		}
 		refTypeField := refType.Field(i)
-		value, err := get(refTypeField)
+		p := refType.Field(i).Tag.Get("envPrefix")
+		if prefix != "" && p != "" {
+			prefix = fmt.Sprintf("%s_%s", prefix, p)
+		} else if p != "" {
+			prefix = p
+		}
+		value, err := get(refTypeField, prefix)
 		if err != nil {
 			return err
 		}
 		if value == "" {
 			if reflect.Struct == refField.Kind() {
-				if err := doParse(refField, funcMap); err != nil {
+				if err := doParse(refField, funcMap, prefix); err != nil {
 					return err
 				}
 			}
@@ -160,7 +172,7 @@ func doParse(ref reflect.Value, funcMap map[reflect.Type]ParserFunc) error {
 	return nil
 }
 
-func get(field reflect.StructField) (string, error) {
+func get(field reflect.StructField, prefix string) (string, error) {
 	var (
 		val string
 		err error
@@ -169,6 +181,9 @@ func get(field reflect.StructField) (string, error) {
 	key, opts := parseKeyForOption(field.Tag.Get("env"))
 
 	defaultValue := field.Tag.Get("envDefault")
+	if key != "" && prefix != "" {
+		key = fmt.Sprintf("%s_%s", prefix, key)
+	}
 	val = getOr(key, defaultValue)
 
 	expandVar := field.Tag.Get("envExpand")

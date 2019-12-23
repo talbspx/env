@@ -147,6 +147,14 @@ type NestedStruct struct {
 	NestedVar string `env:"nestedvar"`
 }
 
+type PrefixStruct struct {
+	PrefixedStruct CommonStruct `envPrefix:"parent"`
+}
+
+type CommonStruct struct {
+	NestedVar string `env:"nestedvar"`
+}
+
 func TestParsesEnv(t *testing.T) {
 	defer os.Clearenv()
 
@@ -701,7 +709,7 @@ func TestCustomParser(t *testing.T) {
 		reflect.TypeOf(foo{}): func(v string) (interface{}, error) {
 			return foo{name: v}, nil
 		},
-	})
+	}, "")
 
 	assert.NoError(t, err)
 	assert.Equal(t, cfg.Var.name, "test")
@@ -712,13 +720,13 @@ func TestCustomParser(t *testing.T) {
 
 func TestParseWithFuncsNoPtr(t *testing.T) {
 	type foo struct{}
-	err := ParseWithFuncs(foo{}, nil)
+	err := ParseWithFuncs(foo{}, nil, "")
 	assert.EqualError(t, err, "env: expected a pointer to a Struct")
 }
 
 func TestParseWithFuncsInvalidType(t *testing.T) {
 	var c int
-	err := ParseWithFuncs(&c, nil)
+	err := ParseWithFuncs(&c, nil, "")
 	assert.EqualError(t, err, "env: expected a pointer to a Struct")
 }
 
@@ -740,7 +748,7 @@ func TestCustomParserError(t *testing.T) {
 		cfg := &config{}
 		err := ParseWithFuncs(cfg, map[reflect.Type]ParserFunc{
 			reflect.TypeOf(foo{}): customParserFunc,
-		})
+		}, "")
 
 		assert.Empty(t, cfg.Var.name)
 		assert.EqualError(t, err, "env: parse error on field \"Var\" of type \"env.foo\": something broke")
@@ -755,7 +763,7 @@ func TestCustomParserError(t *testing.T) {
 		cfg := &config{}
 		err := ParseWithFuncs(cfg, map[reflect.Type]ParserFunc{
 			reflect.TypeOf(foo{}): customParserFunc,
-		})
+		}, "")
 
 		assert.Empty(t, cfg.Var)
 		assert.EqualError(t, err, "env: parse error on field \"Var\" of type \"[]env.foo\": something broke")
@@ -784,7 +792,7 @@ func TestCustomParserBasicType(t *testing.T) {
 	cfg := &config{}
 	err := ParseWithFuncs(cfg, map[reflect.Type]ParserFunc{
 		reflect.TypeOf(ConstT(0)): customParserFunc,
-	})
+	}, "")
 
 	assert.NoError(t, err)
 	assert.Equal(t, exp, cfg.Const)
@@ -815,7 +823,7 @@ func TestCustomParserUint64Alias(t *testing.T) {
 
 	err := ParseWithFuncs(&cfg, map[reflect.Type]ParserFunc{
 		reflect.TypeOf(one): tParser,
-	})
+	}, "")
 
 	assert.True(t, parserCalled, "tParser should have been called")
 	assert.NoError(t, err)
@@ -838,7 +846,7 @@ func TestTypeCustomParserBasicInvalid(t *testing.T) {
 	cfg := &config{}
 	err := ParseWithFuncs(cfg, map[reflect.Type]ParserFunc{
 		reflect.TypeOf(ConstT(0)): customParserFunc,
-	})
+	}, "")
 
 	assert.Empty(t, cfg.Const)
 	assert.EqualError(t, err, "env: parse error on field \"Const\" of type \"env.ConstT\": random error")
@@ -864,7 +872,7 @@ func TestCustomParserNotCalledForNonAlias(t *testing.T) {
 
 	err := ParseWithFuncs(&cfg, map[reflect.Type]ParserFunc{
 		reflect.TypeOf(T(0)): tParser,
-	})
+	}, "")
 
 	assert.False(t, tParserCalled, "tParser should not have been called")
 	assert.NoError(t, err)
@@ -1048,11 +1056,27 @@ func ExampleParseWithFuncs() {
 		reflect.TypeOf(thing{}): func(v string) (interface{}, error) {
 			return thing{desc: v}, nil
 		},
-	})
+	}, "")
 	if err != nil {
 		fmt.Println(err)
 	}
 	fmt.Println(c.Thing.desc)
 	// Output:
 	// my thing
+}
+
+func TestParsesPrefixEnv(t *testing.T) {
+	os.Setenv("parent_nestedvar", "somenestedvalue")
+	defer os.Clearenv()
+	var cfg PrefixStruct
+	assert.NoError(t, Parse(&cfg))
+	assert.Equal(t, "somenestedvalue", cfg.PrefixedStruct.NestedVar)
+}
+
+func TestParsesUberPrefixEnv(t *testing.T) {
+	os.Setenv("uber_parent_nestedvar", "somenestedvalue")
+	defer os.Clearenv()
+	var cfg PrefixStruct
+	assert.NoError(t, ParseWithPrefix(&cfg, "uber"))
+	assert.Equal(t, "somenestedvalue", cfg.PrefixedStruct.NestedVar)
 }
