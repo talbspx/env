@@ -1,3 +1,7 @@
+# NOTE!
+This repo forked from https://github.com/caarlos0/env
+and adds a new feature for envPrefix.
+
 # env
 
 [![Build Status](https://img.shields.io/travis/caarlos0/env.svg?logo=travis&style=for-the-badge)](https://travis-ci.org/caarlos0/env)
@@ -83,6 +87,9 @@ other type you want.
 
 If you set the `envDefault` tag for something, this value will be used in the
 case of absence of it in the environment.
+
+If you set the `envPrefix` tag for a struct, this value will be prefixed
+to any env var name in the nested struct.
 
 By default, slice types will split the environment value on `,`; you can change
 this behavior by setting the `envSeparator` tag.
