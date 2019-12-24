@@ -1,4 +1,4 @@
-module github.com/caarlos0/env/v6
+module github.com/talbspx/env
 
 require github.com/stretchr/testify v1.4.0
 
